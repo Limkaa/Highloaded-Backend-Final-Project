@@ -206,9 +206,9 @@ class LessonsViewSet(viewsets.ViewSet):
             serializer = LessonSerializer(instance=lesson, data=request.data)
             if serializer.is_valid(raise_exception=True):
                 serializer.save()
-                logger.info(f'Lesson created')
+                logger.info(f'Lesson updated')
                 return Response(serializer.data)
-            logger.warning(f'Invalid data for lesson create')
+            logger.warning(f'Invalid data for lesson update')
             return Response(serializer.errors)
         logger.error(f'Lesson not found')
         return Response(status=status.HTTP_404_NOT_FOUND)
@@ -306,6 +306,13 @@ class CourseNewsViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return News.objects.filter(course_id=self.kwargs.get('course_pk'))
     
+    def get_object(self, *args, **kwargs):
+        course_id = kwargs.get('course_pk', None)
+        news_id = kwargs.get('pk', None)
+        if news_id and course_id:
+            return News.objects.filter(id=news_id, course_id=course_id).first()
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    
     def create(self, request, *args, **kwargs):
         course = Course.objects.filter(id=self.kwargs.get('course_pk')).first()
         self.check_object_permissions(request, course)
@@ -316,6 +323,28 @@ class CourseNewsViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         logger.error('Invalid info for news create')
         return Response(serializer.errors)
+    
+    def update(self, request, *args, **kwargs):
+        news = self.get_object(**kwargs)
+        if news:
+            self.check_object_permissions(request, news.course)
+            serializer = NewsSerializer(instance=news, data=request.data)
+            if serializer.is_valid(raise_exception=True):
+                serializer.save()
+                logger.info(f'News updated')
+                return Response(serializer.data)
+            logger.warning(f'Invalid data for news update')
+            return Response(serializer.errors)
+        logger.error(f'News not found')
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    
+    def destroy(self, request, *args, **kwargs):
+        news = self.get_object(**kwargs)
+        if news:
+            self.check_object_permissions(request, news.course)
+            news.delete()
+            return Response({"message": "News deleted"}, status=status.HTTP_200_OK)
+        return Response(status=status.HTTP_404_NOT_FOUND)
 
 
 class CourseReviewsViewSet(viewsets.ModelViewSet):
@@ -368,26 +397,32 @@ class LessonCommentsViewSet(viewsets.ModelViewSet):
             permission_classes = (IsCourseStudent | IsOwner,)
         return [permission() for permission in permission_classes]
     
-    def get_object(self):
-        object = self.get_queryset().filter(id=self.kwargs.get('pk')).first()
+    def get_object(self, *args, **kwargs):
+        object = self.get_lesson(**kwargs).comments.filter(id=self.kwargs.get('pk')).first()
         if object:
             return object
         raise Http404
     
-    def get_queryset(self):
+    def get_lesson(self, *args, **kwargs):
         lesson = Lesson.objects.filter(
             id=self.kwargs.get('lesson_pk'),
             course_id=self.kwargs.get('course_pk')).first()
         
         if not lesson:
-            raise Http404
+            raise Response({'message': 'Lesson does not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        return lesson.comments.all()
+        return lesson
     
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context['lesson_id'] = self.kwargs.get('lesson_id')
         return context
+    
+    def list(self, request, **kwargs):
+        lesson = self.get_lesson(**kwargs)
+        self.check_object_permissions(request, lesson.course)
+        serializer = NewsSerializer(lesson.comments, many=True)
+        return Response(serializer.data)
     
     def create(self, request, *args, **kwargs):
         course = Course.objects.filter(id=self.kwargs.get('course_pk')).first()

@@ -49,4 +49,4 @@ class NotCourseStudentOrOwner(permissions.BasePermission):
     message = "Students and teacher have no access to that action"
     
     def has_object_permission(self, request, view, obj):
-        return not (Membership.objects.user_is_student_of(request.user, obj) and obj.owner == request.user)
+        return not (Membership.objects.user_is_student_of(request.user, obj) or obj.owner == request.user)

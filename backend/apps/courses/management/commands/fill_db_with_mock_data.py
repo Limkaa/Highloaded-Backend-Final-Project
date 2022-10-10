@@ -21,12 +21,12 @@ class Command(BaseCommand):
     help = 'Fills new database with mock data'
 
     def _create_superuser(self):
-        return User.objects.create_superuser(id=1, email="admin@gmail.com", password="admin")
+        return User.objects.create_superuser(email="admin@gmail.com", password="admin")
 
     def _create_categories(self, categories):
         categories_objects = []
         for index, category in enumerate(categories):
-            categories_objects.append(Category(id=index+1, title=category))
+            categories_objects.append(Category(title=category))
         
         if categories_objects:
             Category.objects.bulk_create(categories_objects)
@@ -48,7 +48,7 @@ class Command(BaseCommand):
         courses_objects = []
         for index, course in enumerate(random.sample(courses, courses_num)):
             courses_objects.append(Course(
-                id=index+1, title=course.get('title'),
+                title=course.get('title'),
                 description=course.get('description'),
                 owner=random.choice(self.users),
                 category=random.choice(self.categories)
@@ -63,7 +63,6 @@ class Command(BaseCommand):
     
     def _create_lessons(self, lessons):
         lessons_objects = []
-        id = 1
         for course in self.courses:
             lessons_num = random.randint(0, 30)
             course_lessons = random.sample(lessons, lessons_num)
@@ -71,9 +70,10 @@ class Command(BaseCommand):
                 lesson_url_kwarg = "".join(random.sample('ABCDEFGHIJKLMPabcdefghjklmp', 10))
                 videolink = f'https://youtu.be/{lesson_url_kwarg}'
                 lessons_objects.append(Lesson(
-                    id=id, course=course, title=lesson.get('title'),
-                    description=lesson.get('description'), videolink=videolink))
-                id += 1
+                    course=course, 
+                    title=lesson.get('title'),
+                    description=lesson.get('description'), 
+                    videolink=videolink))
         
         if lessons_objects:
             Lesson.objects.bulk_create(lessons_objects)
@@ -83,7 +83,6 @@ class Command(BaseCommand):
     
     def _create_bookmarks(self):
         bookmarks_objects = []
-        id = 1
         for course in self.courses:
             memberships = [membership for membership in self.memberships if membership.course == course]
             lessons = [lesson for lesson in self.lessons if lesson.course == course]
@@ -94,8 +93,8 @@ class Command(BaseCommand):
 
                 for lesson in lessons_to_bookmark:
                     bookmarks_objects.append(Bookmark(
-                        id=id, lesson=lesson, owner=membership.owner))
-                    id += 1
+                        lesson=lesson, 
+                        owner=membership.owner))
         
         if bookmarks_objects:
             Bookmark.objects.bulk_create(bookmarks_objects)
@@ -105,15 +104,14 @@ class Command(BaseCommand):
     
     def _create_course_news(self, news):
         news_objects = []
-        id = 1
         for course in self.courses:
             news_num = random.randint(0, 5)
             course_news = random.sample(news, news_num)
             for article in course_news:
                 news_objects.append(News.objects.create(
-                    id=id, course=course, title=article.get('title'),
+                    course=course, 
+                    title=article.get('title'),
                     text=article.get('description')))
-                id += 1
         
         if news_objects:
             self.stdout.write(self.style.SUCCESS('News successfully created'))
@@ -122,7 +120,6 @@ class Command(BaseCommand):
     
     def _create_comments(self, comments):
         comments_objects = []
-        id = 1
         for course in self.courses:
             memberships = [membership for membership in self.memberships if membership.course == course]
             lessons = [lesson for lesson in self.lessons if lesson.course == course]
@@ -133,10 +130,8 @@ class Command(BaseCommand):
                 comments_for_lesson = random.sample(comments, comments_num)
                 
                 for index, membership in enumerate(students_who_comment):
-                    comments_objects.append(Comment(
-                        id=id, lesson=lesson, owner=membership.owner,
+                    comments_objects.append(Comment(lesson=lesson, owner=membership.owner,
                         text=comments_for_lesson[index].get('description')))
-                    id += 1
         
         if comments_objects:
             Comment.objects.bulk_create(comments_objects)
@@ -146,7 +141,6 @@ class Command(BaseCommand):
     
     def _create_tasks(self, tasks):
         tasks_objects = []
-        id = 1
         for course in self.courses:
             lessons = [lesson for lesson in self.lessons if lesson.course == course]
             
@@ -156,9 +150,9 @@ class Command(BaseCommand):
                 
                 for index, task in enumerate(tasks_for_lesson):
                     tasks_objects.append(Task(
-                        id=id, lesson=lesson, title=task.get('title'),
+                        lesson=lesson, 
+                        title=task.get('title'),
                         description=task.get('description')))
-                    id += 1
         
         if tasks_objects:
             Task.objects.bulk_create(tasks_objects)
@@ -168,7 +162,6 @@ class Command(BaseCommand):
     
     def _create_memberships(self):
         memberships = []
-        id = 1
         for course in self.courses:
             students_num = random.randint(0, len(self.users)-1)
             possible_students = random.sample(self.users, students_num)
@@ -176,8 +169,7 @@ class Command(BaseCommand):
             for student in possible_students:
                 if course.owner == student:
                     continue
-                memberships.append(Membership(id=id, owner=student, course=course))
-                id += 1
+                memberships.append(Membership(owner=student, course=course))
         
         if memberships:
             Membership.objects.bulk_create(memberships)
@@ -187,7 +179,6 @@ class Command(BaseCommand):
     
     def _create_reviews(self, reviews):
         reviews_objects = []
-        id = 1
         for course in self.courses:
             memberships = [membership for membership in self.memberships if membership.course == course]
             reviews_num = random.randint(0, len(memberships))
@@ -196,10 +187,10 @@ class Command(BaseCommand):
             
             for index, membership in enumerate(students_who_review):
                 reviews_objects.append(Review(
-                    id=id, owner=membership.owner, course=course,
+                    owner=membership.owner, 
+                    course=course,
                     text=reviews_for_course[index].get('description'), 
                     rating=random.randint(1, 5)))
-                id += 1
         
         if reviews_objects:
             Review.objects.bulk_create(reviews_objects)

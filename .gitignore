@@ -152,3 +152,7 @@ cython_debug/
 #.idea/
 .DS-Store
 .DS_Store
+backend/data
+migrations/
+avatars/
+covers/
