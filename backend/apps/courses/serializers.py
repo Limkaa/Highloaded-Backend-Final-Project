@@ -176,14 +176,6 @@ class ReviewSerializer(serializers.ModelSerializer):
             }
         }
 
-    def create(self, validated_data):
-        review = Review.objects.get_or_create(
-            course_id = self.context['course_id'],
-            owner = self.context['request'].user,
-            **validated_data
-        )
-        return review
-
 
 class CommentSerializer(serializers.ModelSerializer):
     owner = ProfileSerializer(source='owner.profile', read_only=True)

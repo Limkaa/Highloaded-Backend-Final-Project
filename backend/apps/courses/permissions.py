@@ -35,7 +35,7 @@ class IsOwner(permissions.BasePermission):
 
 class IsCourseStudent(permissions.BasePermission):
     """ Object-level permission to only allow students see and work with course """
-    message = "Only course students and teacher have access to that action"
+    message = "You can't perform this action"
     
     def has_object_permission(self, request, view, obj):
         is_student = Membership.objects.user_is_student_of(request.user, obj)

@@ -44,6 +44,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Works
 class CategoriesListAPIView(generics.ListAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -51,24 +52,28 @@ class CategoriesListAPIView(generics.ListAPIView):
     pagination_class = None
 
 
+# Works
 class CategoryRetrieveAPIView(generics.RetrieveAPIView):
     queryset = Category.objects.all()
     serializer_class = CategoryCoursesListSerializer
     permission_classes = [AllowAny]
 
 
+# Works
 class TeachersListView(generics.ListAPIView):
     queryset = Profile.objects.teachers()
     serializer_class = TeachersListSerializer
     permission_classes = [AllowAny]
 
 
+# Works
 class TeacherDetailView(generics.RetrieveAPIView):
     queryset = Profile.objects.all()
     serializer_class = TeacherDetailSerializer
     permission_classes = [AllowAny]
 
 
+# Works
 class CoursesViewSet(viewsets.ViewSet):
     
     def get_permissions(self):
@@ -152,6 +157,7 @@ class CoursesViewSet(viewsets.ViewSet):
         return Response(status=status.HTTP_404_NOT_FOUND)
 
 
+# Works
 class LessonsViewSet(viewsets.ViewSet):
     def get_permissions(self):
         if self.action in ['retrieve', 'bookmarks']:
@@ -222,8 +228,9 @@ class LessonsViewSet(viewsets.ViewSet):
         return Response(status=status.HTTP_404_NOT_FOUND)
 
 
+# Works (for SIS)
 class BookmarksViewSet(viewsets.ViewSet):
-    permission_classes = (IsCourseStudent | IsOwner,)
+    permission_classes = [IsCourseStudent | IsOwner]
     
     def get_object(self, *args, **kwargs):
         course_id = kwargs.get('course_pk', None)
@@ -266,9 +273,9 @@ class BookmarksViewSet(viewsets.ViewSet):
         return Response({"message": "Lesson not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
+# Works (for SIS)
 class TasksViewSet(viewsets.ModelViewSet):
     serializer_class = TaskSerializer
-    permission_classes = (IsOwner,)
     
     def get_permissions(self):
         if self.action in ['retrieve', 'list']:
@@ -277,76 +284,69 @@ class TasksViewSet(viewsets.ModelViewSet):
             permission_classes = (IsOwner, )
         return [permission() for permission in permission_classes]
     
-    def perform_create(self, serializer):
-        lesson = Lesson.objects.filter(
-            id=self.kwargs.get('lesson_pk'),
-            course_id=self.kwargs.get('course_pk')).first()
+    def get_object(self):
+        object = self.get_queryset().filter(id=self.kwargs.get('pk')).first()
+        if object:
+            return object
+        raise Http404
+    
+    def get_lesson(self):
+        course_id = self.kwargs.get('course_pk')
+        lesson_id = self.kwargs.get('lesson_pk')
+        lesson = Lesson.objects.filter(id=lesson_id, course_id=course_id).first()
         if lesson:
             self.check_object_permissions(self.request, lesson.course)
-            serializer.save(lesson=lesson)
+            return lesson
         raise Http404
     
     def get_queryset(self):
-        lesson = Lesson.objects.filter(
-            id=self.kwargs.get('lesson_pk'),
-            course_id=self.kwargs.get('course_pk')).first()
-        if lesson:
-            self.check_object_permissions(self.request, lesson.course)
-            return Task.objects.filter(lesson=lesson)
-        raise Http404
+        lesson = self.get_lesson()
+        return Task.objects.filter(lesson_id=lesson.id)
+    
+    def create(self, request, *args, **kwargs):
+        lesson = self.get_lesson()
+        self.check_object_permissions(request, lesson.course)
+        
+        serializer = TaskSerializer(data=request.data)
+        if serializer.is_valid(raise_exception=True):
+            serializer.save(lesson=lesson)
+            logger.info('New task created')
+            return Response(serializer.data)
+        logger.warning('Invalid info for task create')
+        return Response(serializer.errors)
 
 
+# Works (for SIS)
 class CourseNewsViewSet(viewsets.ModelViewSet):
     serializer_class = NewsSerializer
     permission_classes = (IsOwnerOrReadOnly,)
     
-    def perform_create(self, serializer):
-        serializer.save(course_id=self.kwargs.get('course_pk'))
+    def get_object(self, *args, **kwargs):
+        news_id = self.kwargs.get('pk', None)
+        news = self.get_queryset().filter(id=news_id).first()
+        if news: 
+            self.check_object_permissions(self.request, news.course)
+            return news
+        raise Http404
     
     def get_queryset(self):
-        return News.objects.filter(course_id=self.kwargs.get('course_pk'))
-    
-    def get_object(self, *args, **kwargs):
-        course_id = kwargs.get('course_pk', None)
-        news_id = kwargs.get('pk', None)
-        if news_id and course_id:
-            return News.objects.filter(id=news_id, course_id=course_id).first()
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        course = Course.objects.get(id=self.kwargs.get('course_pk', None))
+        news = News.objects.filter(course=course)
+        return news
     
     def create(self, request, *args, **kwargs):
         course = Course.objects.filter(id=self.kwargs.get('course_pk')).first()
         self.check_object_permissions(request, course)
         serializer = NewsSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
-            self.perform_create(serializer)
+            serializer.save(course=course)
             logger.info('New course news created')
             return Response(serializer.data)
         logger.error('Invalid info for news create')
         return Response(serializer.errors)
-    
-    def update(self, request, *args, **kwargs):
-        news = self.get_object(**kwargs)
-        if news:
-            self.check_object_permissions(request, news.course)
-            serializer = NewsSerializer(instance=news, data=request.data)
-            if serializer.is_valid(raise_exception=True):
-                serializer.save()
-                logger.info(f'News updated')
-                return Response(serializer.data)
-            logger.warning(f'Invalid data for news update')
-            return Response(serializer.errors)
-        logger.error(f'News not found')
-        return Response(status=status.HTTP_404_NOT_FOUND)
-    
-    def destroy(self, request, *args, **kwargs):
-        news = self.get_object(**kwargs)
-        if news:
-            self.check_object_permissions(request, news.course)
-            news.delete()
-            return Response({"message": "News deleted"}, status=status.HTTP_200_OK)
-        return Response(status=status.HTTP_404_NOT_FOUND)
 
 
+# Works (for SIS)
 class CourseReviewsViewSet(viewsets.ModelViewSet):
     serializer_class = ReviewSerializer
     
@@ -359,80 +359,88 @@ class CourseReviewsViewSet(viewsets.ModelViewSet):
             permission_classes = (AllowAny, )
         return [permission() for permission in permission_classes]
     
+    def get_course(self):
+        course = Course.objects.filter(id=self.kwargs.get('course_pk')).first()
+        if course:
+            return course
+        raise Http404    
+    
     def get_object(self):
-        object = self.get_queryset().filter(id=self.kwargs.get('pk')).first()
-        if object:
-            return object
-        raise Http404()
+        review = self.get_queryset().filter(id=self.kwargs.get('pk')).first()
+        if review:
+            self.check_object_permissions(self.request, review)
+            return review
+        raise Http404
     
     def get_queryset(self):
-        return Review.objects.filter(course__id=self.kwargs.get('course_pk'))
-    
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context['course_id'] = self.kwargs.get('course_pk')
-        return context
+        course = self.get_course()
+        return Review.objects.filter(course=course)
     
     def create(self, request, *args, **kwargs):
-        review = Review.objects.of_user_for_course(self.request.user, self.kwargs.get('course_pk'))
+        course = self.get_course()
+        review = Review.objects.of_user_for_course(request.user, course.id)
+        
         if not review:
+            self.check_object_permissions(request, course)
             serializer = ReviewSerializer(data=request.data)
             if serializer.is_valid(raise_exception=True):
-                serializer.save()
-                logger.info('New review created')
+                serializer.save(owner=request.user, course=course)
                 return Response(serializer.data)
-            logger.warning('Invalid info for review create')
             return Response(serializer.errors)
-        logger.error('Review not found')
-        return Response(status=status.HTTP_404_NOT_FOUND)
+        
+        serializer = ReviewSerializer(review)
+        return Response(
+            {
+                "message": "Review already exists from you", 
+                "review": serializer.data
+            }, 
+            status=status.HTTP_403_FORBIDDEN
+        )
 
 
+# Works (for SIS)
 class LessonCommentsViewSet(viewsets.ModelViewSet):
     serializer_class = CommentSerializer
     
     def get_permissions(self):
-        if self.action in ['update', 'destroy', 'partial-update']:
+        if self.action in ['update', 'destroy']:
             permission_classes = (IsOwner,)
         else:
             permission_classes = (IsCourseStudent | IsOwner,)
         return [permission() for permission in permission_classes]
     
-    def get_object(self, *args, **kwargs):
-        object = self.get_lesson(**kwargs).comments.filter(id=self.kwargs.get('pk')).first()
-        if object:
-            return object
+    def get_object(self):
+        comment = self.get_lesson().comments.filter(id=self.kwargs.get('pk')).first()
+        if comment:
+            self.check_object_permissions(self.request, comment)
+            return comment
         raise Http404
     
-    def get_lesson(self, *args, **kwargs):
-        lesson = Lesson.objects.filter(
-            id=self.kwargs.get('lesson_pk'),
-            course_id=self.kwargs.get('course_pk')).first()
-        
-        if not lesson:
-            raise Response({'message': 'Lesson does not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        return lesson
+    def get_lesson(self):
+        course_id = self.kwargs.get('course_pk')
+        lesson_id = self.kwargs.get('lesson_pk')
+        lesson = Lesson.objects.filter(id=lesson_id, course_id=course_id).first()
+        if lesson:
+            return lesson
+        raise Http404
+    
+    def get_queryset(self):
+        lesson = self.get_lesson()
+        self.check_object_permissions(self.request, lesson.course)
+        return Comment.objects.filter(lesson_id=lesson.id)
     
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context['lesson_id'] = self.kwargs.get('lesson_id')
+        context['lesson_id'] = self.kwargs.get('lesson_pk')
         return context
     
-    def list(self, request, **kwargs):
-        lesson = self.get_lesson(**kwargs)
-        self.check_object_permissions(request, lesson.course)
-        serializer = NewsSerializer(lesson.comments, many=True)
-        return Response(serializer.data)
-    
     def create(self, request, *args, **kwargs):
-        course = Course.objects.filter(id=self.kwargs.get('course_pk')).first()
-        if course:
+        lesson = self.get_queryset().first().lesson
+        if lesson:
+            self.check_object_permissions(request, lesson.course)
             serializer = CommentSerializer(data=request.data, context=self.get_serializer_context())
             if serializer.is_valid(raise_exception=True):
                 serializer.save()
-                logger.info('New comment created')
                 return Response(serializer.data)
-            logger.warning('Invalid data for comment create')
             return Response(serializer.errors)
-        logger.error('Course not found')
         raise Http404()
