@@ -1,8 +1,11 @@
 from django.http import Http404
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from rest_framework.response import Response
 from rest_framework import status, generics, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 
 from apps.accounts.models import Profile
 
@@ -50,6 +53,11 @@ class CategoriesListAPIView(generics.ListAPIView):
     serializer_class = CategorySerializer
     permission_classes = [AllowAny]
     pagination_class = None
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
+    
+    @method_decorator(cache_page(60*1))
+    def get(self, request, format=None, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 # Works
@@ -323,19 +331,24 @@ class CourseNewsViewSet(viewsets.ModelViewSet):
     
     def get_object(self, *args, **kwargs):
         news_id = self.kwargs.get('pk', None)
-        news = self.get_queryset().filter(id=news_id).first()
-        if news: 
-            self.check_object_permissions(self.request, news.course)
-            return news
+        article = self.get_queryset().filter(id=news_id).first()
+        if article: 
+            self.check_object_permissions(self.request, article.course)
+            return article
+        raise Http404
+    
+    def get_course(self):
+        course = Course.objects.filter(id=self.kwargs.get('course_pk', None)).first()
+        if course:
+            return course
         raise Http404
     
     def get_queryset(self):
-        course = Course.objects.get(id=self.kwargs.get('course_pk', None))
-        news = News.objects.filter(course=course)
-        return news
+        course = self.get_course()
+        return News.objects.filter(course=course)
     
     def create(self, request, *args, **kwargs):
-        course = Course.objects.filter(id=self.kwargs.get('course_pk')).first()
+        course = self.get_course()
         self.check_object_permissions(request, course)
         serializer = NewsSerializer(data=request.data)
         if serializer.is_valid(raise_exception=True):
